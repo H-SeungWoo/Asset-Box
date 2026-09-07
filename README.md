@@ -6,6 +6,8 @@
 
 [서비스 바로가기](https://assetbox.cloud/) · [API 계약 문서](./docs/asset-post-api.md) · [배포 가이드](./DEPLOY.md)
 
+![에셋 목록 — 카테고리와 태그로 등록된 3D 에셋 탐색](./docs/images/asset-list.png)
+
 | 구분 | 내용 |
 | --- | --- |
 | 개발 기간 | 2026.05.25 ~ 2026.07.12 |
@@ -20,6 +22,23 @@
 | **ZIP 검증·압축 해제** | 모델과 텍스처를 분류하고, 잘못된 경로·과도한 용량을 검사 | [ZipExtractService.java](./src/main/java/io/teabag/assetbox/file/service/ZipExtractService.java) |
 | **업로드 실패 보상** | 업로드 도중 실패했을 때 이미 저장한 S3 객체 삭제 | [FileServiceImpl.java](./src/main/java/io/teabag/assetbox/file/service/FileServiceImpl.java) |
 | **7일 유예 후 삭제** | 삭제 요청과 실제 파일 제거를 분리하고, 실패한 삭제는 다음 배치에서 재시도 | [StoragePurgeService.java](./src/main/java/io/teabag/assetbox/file/service/StoragePurgeService.java) |
+
+<details>
+<summary>서비스 화면 더 보기 — 3D 미리보기·다운로드 / 에셋 제작 요청</summary>
+
+### 에셋 상세: 3D 미리보기와 원본 ZIP 다운로드
+
+등록된 모델을 웹에서 확인하고 원본 ZIP을 내려받는 화면입니다.
+
+![에셋 상세 — 3D 모델 미리보기와 원본 ZIP 다운로드](./docs/images/asset-detail.png)
+
+### 제작 요청: 필요한 에셋과 사용 환경 공유
+
+에셋 종류·스타일·사용 엔진과 참고 이미지를 전달하고 요청 상태를 확인하는 화면입니다.
+
+![에셋 제작 요청 — 요구사항과 진행 상태 확인](./docs/images/asset-request.png)
+
+</details>
 
 ## 담당 역할
 
