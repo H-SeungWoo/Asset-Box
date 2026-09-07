@@ -1,224 +1,170 @@
 # AssetBox
 
-> **3D 에셋을 안전하게 공유하고 재사용하기 위한 사내 협업 플랫폼**  
-> 백엔드 개발자 한승우의 파일 도메인 설계·구현 경험을 중심으로 정리한 개인 프로젝트 README입니다.
+**Unity·Unreal 개발자와 테크니컬 아티스트(TA)가 3D 에셋을 공유·관리하는 웹 서비스**
 
-배포 주소: [https://assetbox.cloud/](https://assetbox.cloud/)
+모델과 텍스처를 묶어 등록하고, 필요한 에셋을 찾아 내려받거나 제작을 요청할 수 있도록 개발했습니다. 이 저장소는 백엔드 코드이며, 아래는 **한승우가 담당한 파일 처리 기능**을 중심으로 정리했습니다.
 
-## 프로젝트를 한 문장으로 설명하면
-
-AssetBox는 아티스트와 개발자가 FBX·GLB 모델, 텍스처, 썸네일을 게시글 단위로 등록하고 미리보기·검색·다운로드할 수 있는 3D 에셋 공유 서비스입니다.
-
-단순 파일 보관함이 아니라, 에셋 게시글과 요청 게시판, 댓글, 태그, 1:1 메시지를 연결해 **필요한 에셋을 요청하고 결과물을 팀 자산으로 축적하는 흐름**을 만드는 것이 목표였습니다.
-
-## 프로젝트 정보
+[서비스 바로가기](https://assetbox.cloud/) · [API 계약 문서](./docs/asset-post-api.md) · [배포 가이드](./DEPLOY.md)
 
 | 구분 | 내용 |
 | --- | --- |
-| 개발 형태 | 8인 팀 프로젝트 |
-| 담당 | 백엔드 파일 도메인 |
-| 아키텍처 | 도메인형 모듈러 모놀리스 |
-| 주요 도메인 | User, File, Post, Request, Comment, Category, Tag, Message, Feedback |
-| 핵심 저장소 | MySQL(메타데이터), AWS S3(파일), Redis(토큰·메시징) |
+| 개발 기간 | 2026.05.25 ~ 2026.07.12 |
+| 팀 규모 | 8인 팀 프로젝트 |
+| 담당 역할 | 백엔드 — 파일 검증·업로드, AWS S3 저장·삭제 흐름 / TA 요구사항 조율 |
+| 핵심 기술 | Java, Spring Boot, JPA, MySQL, AWS S3, Docker |
 
-## 왜 이 프로젝트를 만들었나
+### 먼저 볼 구현 3가지
 
-3D 에셋은 모델 하나만으로 끝나지 않습니다. 모델 파일과 여러 텍스처가 디렉터리 구조를 이룰 수 있고, 원본은 다운로드해야 하지만 웹 미리보기에는 해제된 모델과 텍스처가 필요합니다. 파일 크기가 크기 때문에 잘못된 업로드나 즉시 삭제 정책은 저장 비용과 복구 가능성에도 영향을 줍니다.
+| 구현 | 해결한 문제 | 대표 파일 |
+| --- | --- | --- |
+| **ZIP 검증·압축 해제** | 모델과 텍스처를 분류하고, 잘못된 경로·과도한 용량을 검사 | [ZipExtractService.java](./src/main/java/io/teabag/assetbox/file/service/ZipExtractService.java) |
+| **업로드 실패 보상** | 업로드 도중 실패했을 때 이미 저장한 S3 객체 삭제 | [FileServiceImpl.java](./src/main/java/io/teabag/assetbox/file/service/FileServiceImpl.java) |
+| **7일 유예 후 삭제** | 삭제 요청과 실제 파일 제거를 분리하고, 실패한 삭제는 다음 배치에서 재시도 | [StoragePurgeService.java](./src/main/java/io/teabag/assetbox/file/service/StoragePurgeService.java) |
 
-따라서 다음 문제를 백엔드에서 해결했습니다.
+## 담당 역할
 
-- ZIP 하나를 업로드하면 원본 ZIP과 뷰어용 모델·텍스처를 구분해 저장
-- 허용하지 않은 확장자, 경로 조작, 과도한 압축 해제 용량을 업로드 단계에서 차단
-- 일부 파일만 S3에 남는 실패 상황을 보상 처리
-- 비공개 S3 객체를 Presigned URL로 제한적으로 제공
-- 삭제 즉시 복구 불가능해지는 문제를 7일 유예 후 물리 삭제하는 방식으로 완화
+- TA 과정 수강생들과 초기 요구사항 인터뷰부터 중간 검토 브리핑까지 진행하며, 실제 에셋 제작·공유 과정에 필요한 기능과 개발 범위를 구체화했습니다.
+- 모델·텍스처 ZIP의 업로드와 검증, S3 저장, 파일 메타데이터 관리를 구현했습니다.
+- 업로드 실패 시 보상 삭제와 삭제 요청 후 유예 기간을 두는 파일 수명 주기를 구현했습니다.
 
-## 전체 기능
+요구사항 논의 과정은 [TA 첫 회의](./docs/09_meetings/11-05-2026_TA팀_첫회의.md)와 [중간 프로토타입 발표](./docs/09_meetings/22-05-2026_TA팀_프로토타입발표.md)에 정리되어 있습니다.
 
-- 일반 로그인 및 Google·Naver OAuth2 로그인, JWT 인증
-- 에셋 게시글 CRUD, 카테고리·태그 검색, 좋아요와 댓글
-- 요청 게시글 등록 및 에셋 게시글 연결 시 요청 상태 자동 완료
-- 1:1 메시지와 읽지 않은 메시지 수 조회
-- 관리자용 사용자·게시글·피드백 관리
-- S3 기반 썸네일·참고 이미지·3D 에셋 업로드 및 다운로드
-- Docker Compose와 GitHub Actions 기반 테스트·배포 구성
+## 1. ZIP 하나로 원본 다운로드와 미리보기용 파일 준비
 
-## 기술 스택
+3D 에셋은 모델뿐 아니라 텍스처와 폴더 구조도 함께 전달해야 합니다. 원본 ZIP은 다운로드용으로 보관하고, 압축을 해제한 모델과 텍스처는 웹 미리보기에서 사용할 수 있도록 별도로 저장했습니다.
 
-| 영역 | 기술 |
+```text
+ZIP 업로드
+  → 임시 파일 저장 / 원본 ZIP을 S3에 저장
+  → ZIP 내부 경로·확장자·개수·용량 검사 및 압축 해제
+  → 모델·텍스처를 구분해 S3에 저장 / DB에 메타데이터 저장
+  → 다운로드용 원본과 미리보기용 파일 정보를 구분해 반환
+```
+
+### 경로 검사: 지정된 폴더 안에서만 압축 해제
+
+ZIP 내부 경로를 정규화한 뒤 작업 폴더를 벗어나는지 확인합니다. 서로 다른 표기로 같은 위치를 가리키는 경우에도 중복 경로로 거부합니다.
+
+```java
+Path targetPath = normalizedExtractDir.resolve(normalizedEntryName).normalize();
+if (!targetPath.startsWith(normalizedExtractDir)) {
+    throw new BusinessException(ErrorCode.ZIP_INVALID);
+}
+
+if (!extractedPaths.add(targetPath)) {
+    throw new BusinessException(ErrorCode.ZIP_INVALID);
+}
+```
+
+[원본 코드 — ZipExtractService.java, 경로·중복 검사](https://github.com/H-SeungWoo/Asset-Box/blob/2bea504e71647dd744062e038e4fa01469efc91a/src/main/java/io/teabag/assetbox/file/service/ZipExtractService.java#L73-L80)
+
+### 용량 검사: 실제 압축 해제량을 읽는 동안 제한
+
+압축 파일의 크기만 확인하지 않고 스트림에서 읽은 바이트를 누적해 개별 파일과 전체 압축 해제 용량을 제한합니다.
+
+```java
+while ((read = zipInputStream.read(buffer)) != -1) {
+    extractedSize += read;
+    if (extractedSize > maxExtractedFileSizeBytes) {
+        throw new BusinessException(ErrorCode.SIZE_INVALID);
+    }
+
+    if (currentTotalSize + extractedSize > maxExtractedTotalSizeBytes) {
+        throw new BusinessException(ErrorCode.FILE_TOTAL_SIZE_INVALID);
+    }
+
+    outputStream.write(buffer, 0, read);
+}
+```
+
+[원본 코드 — ZipExtractService.java, 스트림 복사·용량 검사](https://github.com/H-SeungWoo/Asset-Box/blob/2bea504e71647dd744062e038e4fa01469efc91a/src/main/java/io/teabag/assetbox/file/service/ZipExtractService.java#L133-L158)
+
+현재 ZIP 검증은 파일 수 최대 100개, 개별·전체 압축 해제 용량 각각 50 MiB를 기준으로 합니다. 모델은 FBX 또는 GLB 한 개를 허용하며, 모델이 없거나 여러 개인 ZIP은 거부합니다. 중첩된 텍스처 폴더의 상대 경로는 보존합니다.
+
+## 2. 업로드 도중 실패하면 이미 저장한 S3 객체 보상 삭제
+
+DB 트랜잭션이 롤백되어도 S3에 저장한 파일은 자동으로 지워지지 않습니다. ZIP 업로드 과정에서 저장에 성공한 객체의 Key를 모아 두고, 처리 중 예외가 발생하면 해당 목록을 삭제하도록 구성했습니다.
+
+아래는 업로드 함수의 예외 처리 부분입니다.
+
+```java
+} catch (BusinessException e) {
+    deleteUploadedS3Keys(uploadedS3Keys);
+    throw e;
+} catch (RuntimeException e) {
+    deleteUploadedS3Keys(uploadedS3Keys);
+    throw e;
+} catch (IOException e) {
+    deleteUploadedS3Keys(uploadedS3Keys);
+    throw new BusinessException(ErrorCode.ZIP_INVALID);
+} finally {
+    deleteTempDirectory(tempRoot);
+}
+```
+
+[원본 코드 — FileServiceImpl.java, 업로드 예외 처리](https://github.com/H-SeungWoo/Asset-Box/blob/2bea504e71647dd744062e038e4fa01469efc91a/src/main/java/io/teabag/assetbox/file/service/FileServiceImpl.java#L429-L441)
+
+보상 삭제는 객체별로 수행하며, 한 객체의 삭제가 실패해도 로그를 남기고 나머지 객체의 삭제를 계속 시도합니다.
+
+```java
+private void deleteUploadedS3Keys(List<String> uploadedS3Keys) {
+    for (String s3Key : uploadedS3Keys) {
+        try {
+            s3FileStorageService.delete(s3Key);
+        } catch (Exception deleteException) {
+            log.warn("Failed to compensate uploaded S3 object. s3Key = {}", s3Key, deleteException);
+        }
+    }
+}
+```
+
+[원본 코드 — FileServiceImpl.java, 보상 삭제](https://github.com/H-SeungWoo/Asset-Box/blob/2bea504e71647dd744062e038e4fa01469efc91a/src/main/java/io/teabag/assetbox/file/service/FileServiceImpl.java#L533-L541)
+
+## 3. 삭제 요청과 실제 파일 제거를 분리
+
+게시글에 연결된 파일을 삭제할 때는 메타데이터에 삭제 상태와 **7일 뒤의 삭제 예정 시각**을 기록합니다. 매시 정각 배치는 유예 기간이 지났고 아직 S3 삭제가 완료되지 않은 파일을 조회합니다.
+
+```text
+삭제 요청 → 삭제 상태·예정 시각 기록 → 7일 유예
+  → 정각 배치에서 S3 삭제 시도
+     ├─ 성공: 삭제 완료 시각 기록
+     └─ 실패: 미완료 상태 유지 → 다음 배치에서 재시도
+```
+
+S3 삭제가 성공한 뒤에만 완료 시각을 기록하므로, 삭제에 실패한 파일은 다음 배치의 조회 대상에 남습니다.
+
+```java
+for (File file : files) {
+    try {
+        s3FileStorageService.delete(file.getS3Key());
+        file.markStorageDeleted();
+    } catch (Exception e) {
+        log.warn("Failed to purge storage object. fileId = {}, s3Key = {}", file.getId(), file.getS3Key(), e);
+    }
+}
+```
+
+[원본 코드 — StoragePurgeService.java, 대상 조회·삭제](https://github.com/H-SeungWoo/Asset-Box/blob/2bea504e71647dd744062e038e4fa01469efc91a/src/main/java/io/teabag/assetbox/file/service/StoragePurgeService.java#L25-L44) · [삭제 예정 시각 기록 — File.java](./src/main/java/io/teabag/assetbox/file/domain/File.java)
+
+## 구현과 함께 볼 테스트
+
+| 확인할 동작 | 테스트 파일 |
 | --- | --- |
-| Language | Java 25 |
-| Framework | Spring Boot 4.0.6, Spring MVC, Spring Data JPA |
-| Security | Spring Security, OAuth2 Client, JWT |
-| Database | MySQL, Flyway, H2(Test) |
-| Storage / Cache | AWS S3, Redis, Redisson |
-| API | REST, Swagger/OpenAPI |
-| Test | JUnit 5, Mockito, Spring Boot Test |
-| Infra | Docker, Docker Compose, GitHub Actions, GHCR, Nginx Proxy Manager |
+| 경로 이탈·중복 경로·용량·파일 수 제한, 모델 분류 | [ZipExtractServiceTest.java](./src/test/java/io/teabag/assetbox/file/service/ZipExtractServiceTest.java) |
+| ZIP·모델·텍스처 저장, 업로드 실패 시 보상 삭제, 삭제 유예 | [FileServiceTest.java](./src/test/java/io/teabag/assetbox/file/service/FileServiceTest.java) |
+| S3 삭제 성공·실패에 따른 완료 처리 | [StoragePurgeServiceTest.java](./src/test/java/io/teabag/assetbox/file/service/StoragePurgeServiceTest.java) |
+| 게시글과 파일의 업로드·조회·삭제 흐름 | [AssetPostFileLifecycleIntegrationTest.java](./src/test/java/io/teabag/assetbox/post/integration/AssetPostFileLifecycleIntegrationTest.java) |
 
-## 시스템 구조
+## 기술 및 실행 안내
 
-```mermaid
-flowchart LR
-    Client["React Client"] -->|"REST / JWT"| API["Spring Boot API"]
-    API --> Auth["Security / OAuth2 / JWT"]
-    API --> Domains["Domain Services"]
-    Domains --> DB[("MySQL")]
-    Domains --> Redis[("Redis")]
-    Domains --> File["File Domain"]
-    File -->|"metadata"| DB
-    File -->|"object"| S3[("AWS S3")]
-    File -->|"limited access"| URL["Presigned URL"]
-```
+현재 저장소는 **Java 25 / Spring Boot 4.0.6 / Spring Data JPA / MySQL / AWS S3**를 사용합니다. 서비스 전체에는 Redis, Spring Security·OAuth2·JWT가 사용되며 Docker Compose와 GitHub Actions 기반 배포 구성이 포함되어 있습니다.
 
-도메인별로 `controller → service → repository → domain` 책임을 나누고, 다른 도메인의 저장소를 직접 사용하는 대신 서비스 경계를 통해 협업하도록 구성했습니다. 파일 도메인은 Post·Request 등에서 호출하는 공통 저장 계층이며, 연결 대상은 `purpose + purposeId`로 표현합니다.
-
-## 나의 역할과 기여
-
-Git 커밋 이력과 현재 코드에서 확인되는 기여를 기준으로 작성했습니다.
-
-### 1. 파일 도메인 설계와 S3 연동
-
-- 파일의 연결 대상을 `FilePurpose`로 구분하고 메타데이터는 DB, 바이너리는 S3에 저장했습니다.
-- S3 Key 생성 규칙을 별도 컴포넌트로 분리해 객체 경로 생성을 일관되게 관리했습니다.
-- 이미지 조회와 원본 다운로드에 각각 Presigned URL을 발급해 S3 버킷 공개 없이 접근하도록 구현했습니다.
-- 다중 업로드·삭제와 업로드 순서 보존을 지원하고 단위 테스트를 작성했습니다.
-
-### 2. 3D 에셋 ZIP 업로드 파이프라인
-
-사용자는 원본 ZIP 하나만 업로드하지만, 서버는 다운로드용 원본과 웹 뷰어용 파일을 함께 준비합니다.
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant P as PostService
-    participant F as FileService
-    participant Z as ZipExtractService
-    participant S as S3
-    participant D as DB
-
-    C->>P: thumbnail + assetZip 업로드
-    P->>F: 파일 저장 요청
-    F->>Z: 임시 경로에 ZIP 검사·해제
-    Z-->>F: 모델 1개 + 텍스처 목록
-    F->>S: 원본 ZIP 저장
-    F->>S: 모델·텍스처 저장
-    F->>D: 파일 메타데이터 저장
-    F-->>P: 업로드 결과 반환
-    P-->>C: 게시글·다운로드·뷰어 정보
-```
-
-핵심 방어 로직은 다음과 같습니다.
-
-- ZIP 내부 경로를 정규화하고 추출 디렉터리 밖으로 벗어나는 Zip Slip 차단
-- 중복 경로와 비허용 확장자 차단
-- 압축 해제 파일 수, 개별 파일 크기, 전체 크기 상한 적용
-- 모델 파일이 없거나 두 개 이상인 경우 실패 처리
-- 원본 상대 경로를 보존해 텍스처 디렉터리 구조 유지
-- 작업 종료 후 임시 파일 정리
-
-### 3. DB 트랜잭션과 S3 사이의 불일치 대응
-
-DB 트랜잭션은 롤백할 수 있지만 이미 업로드한 S3 객체는 자동으로 사라지지 않습니다. 이를 그대로 두면 실패한 요청이 고아 객체와 저장 비용을 남깁니다.
-
-업로드 중 예외가 발생하면 그 요청에서 저장한 S3 Key를 추적해 삭제하고, 게시글 썸네일 저장 후 에셋 업로드가 실패한 경우에도 썸네일을 보상 삭제하도록 구성했습니다. 즉, 서로 다른 저장 시스템을 하나의 ACID 트랜잭션처럼 오해하지 않고 **실패 시 정합성을 회복하는 보상 처리**를 적용했습니다.
-
-### 4. 7일 지연 삭제와 재시도 가능한 정리 배치
-
-사용자 삭제 요청에는 DB 행과 S3 객체를 즉시 제거하지 않고 soft delete와 `purgeAt`을 기록합니다. 매시 정각 스케줄러가 보존 기간이 지난 객체를 삭제하며, S3 삭제 성공 후에만 완료 시각을 기록합니다.
-
-```mermaid
-flowchart LR
-    Delete["게시글 삭제"] --> Soft["DB soft delete"]
-    Soft --> Reserve["purgeAt = 현재 + 7일"]
-    Reserve --> Batch["매시 정각 정리 배치"]
-    Batch --> Try{"S3 삭제 성공?"}
-    Try -->|"Yes"| Done["storageDeletedAt 기록"]
-    Try -->|"No"| Retry["미완료 상태 유지"]
-    Retry --> Batch
-```
-
-이 설계로 실수로 삭제한 데이터의 복구 여지를 남기고, 일시적인 S3 장애가 발생해도 다음 배치에서 다시 시도할 수 있게 했습니다. 실제 물리 삭제 시점은 정확히 7일 후가 아니라 `purgeAt` 이후 첫 정각 배치입니다.
-
-### 5. 테스트와 API 계약 문서화
-
-- 파일 확장자·크기·빈 파일 검증 단위 테스트
-- S3 Key 생성과 저장·삭제 예외 테스트
-- ZIP 정상/비정상 구조와 용량 제한 테스트
-- 게시글 생성부터 ZIP 다운로드, 뷰어 조회, 지연 삭제까지 이어지는 통합 테스트
-- 프론트엔드가 `downloadFile`과 `viewer`를 구분해 사용할 수 있도록 에셋 게시글–파일 API 계약 문서 작성
-
-## 대표 기술적 의사결정
-
-### 왜 ZIP 원본과 해제 파일을 모두 저장했나?
-
-다운로드 사용자는 제작자가 구성한 원본 묶음을 받아야 하지만, 웹 뷰어는 ZIP을 직접 렌더링할 수 없습니다. 원본 ZIP은 다운로드 대상으로, 해제한 모델·텍스처는 미리보기 대상으로 분리해 각 사용 목적을 만족시켰습니다. 대신 저장 공간이 늘어나는 비용이 있어 업로드 용량 제한과 지연 삭제 정책을 함께 적용했습니다.
-
-### 왜 서버를 거쳐 파일을 내려주지 않고 Presigned URL을 사용했나?
-
-대용량 파일을 애플리케이션 서버가 중계하면 서버의 네트워크와 메모리 사용량이 커집니다. 짧은 시간만 유효한 URL로 S3가 직접 전송하게 해 애플리케이션의 부하를 줄이고, 버킷을 공개하지 않은 채 접근을 통제했습니다.
-
-### 왜 물리 삭제를 별도 스케줄러로 분리했나?
-
-사용자 요청 트랜잭션 안에서 S3 삭제까지 수행하면 외부 저장소 장애가 API 응답과 DB 처리에 직접 영향을 줍니다. 먼저 삭제 상태와 예정 시각을 DB에 확정한 뒤 별도 배치가 S3를 정리하도록 분리해 실패를 재시도 가능한 상태로 만들었습니다.
-
-## 트러블슈팅
-
-### ZIP 업로드가 부분 성공해 S3에 파일이 남는 문제
-
-- **문제**: 여러 객체 중 하나의 업로드나 DB 저장이 실패하면 앞서 업로드된 객체가 남을 수 있었습니다.
-- **원인**: 관계형 DB 트랜잭션이 외부 S3 작업까지 롤백해 주지 않기 때문입니다.
-- **해결**: 요청 단위로 업로드된 Key를 수집하고 예외 발생 시 역순으로 보상 삭제했습니다.
-- **배운 점**: 외부 시스템이 포함된 흐름에서는 성공 경로뿐 아니라 실패 단계별 정리 전략이 도메인 로직의 일부입니다.
-
-### ZIP 내부의 위험하거나 과도한 파일 문제
-
-- **문제**: 파일 확장자만 확인하면 경로 조작이나 압축 해제 폭증을 막을 수 없었습니다.
-- **해결**: 정규화된 대상 경로가 추출 루트 내부인지 확인하고, 스트림을 읽는 동안 개별·누적 크기를 측정했습니다. 파일 개수와 중복 경로도 제한했습니다.
-- **배운 점**: 업로드 검증은 요청 파일의 겉보기 정보가 아니라 실제 처리 과정에서 계속 수행해야 합니다.
-
-### 삭제 실패를 성공으로 기록할 수 있는 문제
-
-- **문제**: S3 삭제 전에 완료 상태를 기록하면 외부 호출 실패 시 DB와 저장소가 불일치합니다.
-- **해결**: S3 삭제 성공 뒤에만 완료 시각을 기록하고, 실패한 대상은 조회 조건에 남겨 다음 배치가 재시도하게 했습니다.
-- **배운 점**: 배치 작업은 여러 번 실행해도 완료 상태가 망가지지 않는 재실행 가능성이 중요합니다.
-
-## 프로젝트를 통해 보여주고 싶은 역량
-
-- 파일 업로드를 단순 CRUD가 아닌 **보안·정합성·비용·복구 정책이 결합된 흐름**으로 설계한 경험
-- DB와 외부 저장소의 트랜잭션 경계 차이를 이해하고 보상 처리와 재시도 구조를 적용한 경험
-- 정상 동작뿐 아니라 악성 ZIP, 부분 실패, 외부 저장소 장애 같은 예외 경로를 테스트한 경험
-- Post·Request 도메인과 합의할 API 계약을 문서화하고 통합 테스트로 연결한 협업 경험
-- 구현의 편의보다 사용자의 다운로드 경험과 운영자의 복구 가능성을 함께 고려한 의사결정 경험
-
-## 아쉬운 점과 개선 방향
-
-- 정리 배치가 한 번에 모든 만료 대상을 조회하므로, 데이터가 커지면 페이지 처리와 분산 락이 필요합니다.
-- 보상 삭제가 최종적으로 계속 실패하는 경우를 추적할 DLQ나 운영 알림이 없어 별도 실패 테이블과 모니터링을 추가할 수 있습니다.
-- Presigned URL 발급 API에서 파일 소유권과 다운로드 권한 정책을 더 세분화하고 발급 이력을 감사 로그로 남길 수 있습니다.
-- MIME type을 클라이언트 제공 값에 의존하지 않고 파일 시그니처 검사로 보강할 수 있습니다.
-- 단위·통합 테스트에 더해 실제 S3 호환 환경(LocalStack/Testcontainers)을 사용하는 E2E 테스트를 추가할 수 있습니다.
-
-## 실행 방법
-
-### 사전 요구사항
-
-- JDK 25
-- Docker / Docker Compose
-- AWS S3 버킷 및 OAuth2 애플리케이션 설정
-
-환경 변수 예시는 [`.env.production.example`](./.env.production.example), 배포 절차는 [`DEPLOY.md`](./DEPLOY.md)를 참고합니다. 실제 자격 증명은 저장소에 커밋하지 않습니다.
+JDK 25와 실행 환경에 맞는 DB·Redis·S3·OAuth 설정이 필요합니다. 환경 설정과 컨테이너 배포 절차는 [DEPLOY.md](./DEPLOY.md), 운영 환경 변수 예시는 [.env.production.example](./.env.production.example)을 참고하세요.
 
 ```bash
 # 테스트
 ./gradlew test
 
-# 로컬 애플리케이션 실행
+# 환경 설정 후 백엔드 실행
 ./gradlew bootRun
-
-# 전체 컨테이너 실행
-docker compose up -d
 ```
-
-애플리케이션 실행 후 Swagger UI는 `/v3/swagger-ui`에서 확인할 수 있습니다.
-
